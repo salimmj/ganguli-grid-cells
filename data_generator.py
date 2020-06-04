@@ -3,6 +3,8 @@ from torch import Tensor, cos, sin, stack, squeeze, from_numpy
 import torch
 import numpy as np
 
+from nan_police import hasnan
+
 class DataGenerator(torch.utils.data.IterableDataset):
     def __init__(self, options, place_cells, gpu=False, train=True):
         super(DataGenerator).__init__()
@@ -10,6 +12,7 @@ class DataGenerator(torch.utils.data.IterableDataset):
         self.place_cells = place_cells
         self.gpu = gpu
         self.train = train
+        self.device = 'cuda' if self.gpu else 'cpu'
         
     def __iter__(self):
         self.n = 0
@@ -18,20 +21,37 @@ class DataGenerator(torch.utils.data.IterableDataset):
     def __next__(self):
         if self.n <= len(self):
             traj = self.generate_trajectory(self.options.box_width, self.options.box_height, self.options.batch_size)
+            ego_v = torch.from_numpy(traj['ego_v']).to(self.device)
+            target_hd = torch.from_numpy(traj['target_hd']).to(self.device)
 
-            v = stack((Tensor(traj['ego_v'])*cos(Tensor(traj['target_hd'])), 
-                Tensor(traj['ego_v'])*sin(Tensor(traj['target_hd']))), axis=-1)
+            v = stack((ego_v*cos(target_hd), ego_v*sin(target_hd)), axis=-1)
 
-            pos = stack((Tensor(traj['target_x']), Tensor(traj['target_y'])), axis=-1)
+            del ego_v, target_hd
 
-            place_outputs = self.place_cells.encode_pos(pos)
+            target_x = torch.from_numpy(traj['target_x']).to(self.device)
+            target_y = torch.from_numpy(traj['target_y']).to(self.device)
 
-            init_pos = squeeze(stack((Tensor(traj['init_x']), Tensor(traj['init_y'])), axis=-1))
-            init_actv = self.place_cells.encode_init_pos(init_pos)
+            pos = stack((target_x, target_y), axis=-1)
 
+            del target_x, target_y
+
+            place_outputs = self.place_cells.get_activation(pos)
+
+            init_x = torch.from_numpy(traj['init_x']).to(self.device)
+            init_y = torch.from_numpy(traj['init_y']).to(self.device)
+
+            init_pos = squeeze(stack((init_x, init_y), axis=-1)).unsqueeze(0)
+
+            del init_x, init_y
+
+            init_actv = self.place_cells.get_activation(init_pos).squeeze()
             inputs = (v, init_actv)
-            del traj, v
+
+            del init_pos
+            # del traj, v
+
             self.n += 1
+
             return (inputs, place_outputs, pos)
         else:
             raise StopIteration
@@ -50,7 +70,7 @@ class DataGenerator(torch.utils.data.IterableDataset):
         y = position[:,1]
         dists = [box_width/2-x, box_height/2-y, box_width/2+x, box_height/2+y]
         d_wall = np.min(dists, axis=0)
-        angles = np.arange(4)*np.pi/2
+        angles = np.arange(4).astype(np.float32)*np.pi/2
         theta = angles[np.argmin(dists, axis=0)]
         hd = np.mod(hd, 2*np.pi)
         a_wall = hd - theta
@@ -73,22 +93,22 @@ class DataGenerator(torch.utils.data.IterableDataset):
         self.border_region = 0.03  # meters
 
         # Initialize variables
-        position = np.zeros([batch_size, samples+2, 2])
-        head_dir = np.zeros([batch_size, samples+2])
-        position[:,0,0] = np.random.uniform(-box_width/2, box_width/2, batch_size)
-        position[:,0,1] = np.random.uniform(-box_height/2, box_height/2, batch_size)
-        head_dir[:,0] = np.random.uniform(0, 2*np.pi, batch_size)
-        velocity = np.zeros([batch_size, samples+2])
+        position = np.zeros([batch_size, samples+2, 2]).astype(np.float32)
+        head_dir = np.zeros([batch_size, samples+2]).astype(np.float32)
+        position[:,0,0] = np.random.uniform(-box_width/2, box_width/2, batch_size).astype(np.float32)
+        position[:,0,1] = np.random.uniform(-box_height/2, box_height/2, batch_size).astype(np.float32)
+        head_dir[:,0] = np.random.uniform(0, 2*np.pi, batch_size).astype(np.float32)
+        velocity = np.zeros([batch_size, samples+2]).astype(np.float32)
 
         # Generate sequence of random boosts and turns
-        random_turn = np.random.normal(mu, sigma, [batch_size, samples+1])
-        random_vel = np.random.rayleigh(b, [batch_size, samples+1])
-        v = np.abs(np.random.normal(0, b*np.pi/2, batch_size))
+        random_turn = np.random.normal(mu, sigma, [batch_size, samples+1]).astype(np.float32)
+        random_vel = np.random.rayleigh(b, [batch_size, samples+1]).astype(np.float32)
+        v = np.abs(np.random.normal(0, b*np.pi/2, batch_size)).astype(np.float32)
 
         for t in range(samples+1):
             # Update velocity
             v = random_vel[:,t]
-            turn_angle = np.zeros(batch_size)
+            turn_angle = np.zeros(batch_size).astype(np.float32)
 
             if not self.options.periodic:
                 # If in border region, turn and slow down
@@ -130,59 +150,3 @@ class DataGenerator(torch.utils.data.IterableDataset):
         traj['target_y'] = position[:,2:,1]
 
         return traj
-
-    
-    def get_generator(self, batch_size=None, box_width=None, box_height=None):
-        '''
-        Returns a generator that yields batches of trajectories
-        '''
-        if not batch_size:
-             batch_size = self.options.batch_size
-        if not box_width:
-            box_width = self.options.box_width
-        if not box_height:
-            box_height = self.options.box_height
-            
-        while True:
-            traj = self.generate_trajectory(box_width, box_height, batch_size)
-
-            v = stack((Tensor(traj['ego_v'])*cos(Tensor(traj['target_hd'])), 
-                Tensor(traj['ego_v'])*sin(Tensor(traj['target_hd']))), axis=-1)
-
-            pos = stack((Tensor(traj['target_x']), Tensor(traj['target_y'])), axis=-1)
-
-            place_outputs = self.place_cells.encode_pos(pos)
-
-            init_pos = squeeze(stack((Tensor(traj['init_x']), Tensor(traj['init_y'])), axis=-1))
-            init_actv = self.place_cells.encode_init_pos(init_pos)
-
-            inputs = (v, init_actv)
-
-            yield (inputs, place_outputs, pos)
-
-
-
-    def get_test_batch(self, batch_size=None, box_width=None, box_height=None):
-        ''' For testing performance, returns a batch of smample trajectories'''
-        if not batch_size:
-             batch_size = self.options.batch_size
-        if not box_width:
-            box_width = self.options.box_width
-        if not box_height:
-            box_height = self.options.box_height
-            
-        traj = self.generate_trajectory(box_width, box_height, batch_size)
-
-        v = stack((Tensor(traj['ego_v'])*cos(Tensor(traj['target_hd'])), 
-            Tensor(traj['ego_v'])*sin(Tensor(traj['target_hd']))), axis=-1)
-
-        pos = stack((Tensor(traj['target_x']), Tensor(traj['target_y'])), axis=-1)
-        
-        place_outputs = self.place_cells.encode_pos(pos)
-
-        init_pos = squeeze(stack((Tensor(traj['init_x']), Tensor(traj['init_y'])), axis=-1))
-        init_actv = self.place_cells.encode_init_pos(init_pos)
-
-        inputs = (v, init_actv)
-    
-        return (inputs, place_outputs, pos)
