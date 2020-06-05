@@ -11,7 +11,7 @@ from pytorch_lightning.core.lightning import LightningModule
 from place_cells import PlaceCells
 from data_generator import DataGenerator
 
-from nan_police import hasnan
+#from nan_police import hasnan
 # from hessianfree import HessianFree
 
 #torch.backends.cudnn.benchmark = False

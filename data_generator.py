@@ -3,7 +3,7 @@ from torch import Tensor, cos, sin, stack, squeeze, from_numpy
 import torch
 import numpy as np
 
-from nan_police import hasnan
+#from nan_police import hasnan
 
 class DataGenerator(torch.utils.data.IterableDataset):
     def __init__(self, options, place_cells, gpu=False, train=True):
@@ -148,5 +148,5 @@ class DataGenerator(torch.utils.data.IterableDataset):
         traj['target_hd'] = head_dir[:,1:-1]
         traj['target_x'] = position[:,2:,0]
         traj['target_y'] = position[:,2:,1]
-
+    
         return traj
