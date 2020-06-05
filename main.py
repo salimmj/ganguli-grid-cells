@@ -2,7 +2,6 @@ from pytorch_lightning import Trainer
 from models import VanillaRNN, LSTM
 from pytorch_lightning.callbacks import ModelCheckpoint
 from pytorch_lightning.logging import TensorBoardLogger
-from test_tube import Experiment
 import glob, os
 
 class AttrDict(dict):
@@ -65,12 +64,10 @@ models = {'RNN': VanillaRNN, 'LSTM': LSTM}
 
 model = models[options.RNN_type](options)
 
-exp = Experiment(save_dir=run_directory)
-# hparams == options
-exp.argparse(options)
-
 # we set version to 0 to keep adding to the same experiment log
 logger = TensorBoardLogger('./logs/', name=run_ID, version=0)
+# hparams == options
+logger.log_hyperparams(options)
 
 checkpoint_callback = ModelCheckpoint(
     filepath= run_directory+'{epoch}-{val_loss:.2f}',
