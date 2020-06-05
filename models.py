@@ -64,11 +64,15 @@ class VanillaRNN(LightningModule):
         return end, h_n, h_states
 
     def training_step(self, batch, batch_idx):
-        inputs, place_outputs, _ = batch
-        output, _, _ = self(inputs[0], inputs[1])
+        inputs, place_outputs, pos = batch
+        output, _, act = self(inputs[0], inputs[1])
         loss = self.criterion(output, place_outputs)
-        tensorboard_logs = {'train_loss': loss}
-        return {'loss': loss, 'log': tensorboard_logs}
+
+        pred_pos = self.pc.get_nearest_cell_pos(act)
+        err = torch.mean(torch.sqrt(torch.sum((pos - pred_pos)**2, dim=-1)))
+
+        tensorboard_logs = {'train_loss': loss, 'train_err': err}
+        return {'loss': loss, 'err': err, 'log': tensorboard_logs}
 
     def configure_optimizers(self):
         return optim.Adam(self.parameters(), lr=self.options.learning_rate, weight_decay=self.options.weight_decay)
@@ -81,15 +85,20 @@ class VanillaRNN(LightningModule):
         inputs, place_outputs, pos = batch
         output, _, act = self(inputs[0], inputs[1])
         loss = self.criterion(output, place_outputs)
+
+        pred_pos = self.pc.get_nearest_cell_pos(act)
+        err = torch.mean(torch.sqrt(torch.sum((pos - pred_pos)**2, dim=-1)))
+
         pos = pos.reshape(-1, pos.shape[-1])
         act = act.reshape(-1, act.shape[-1])
-        return {'val_loss': loss, 'pos': pos, 'act': act}
+        return {'val_loss': loss, 'pos': pos, 'act': act, 'val_err': err}
 
     #TODO update the plot generation with bsorch's (seems faster)
     def validation_epoch_end(self, outputs):
         avg_loss = torch.stack([x['val_loss'] for x in outputs]).mean()
+        avg_err = torch.stack([x['val_err'] for x in outputs]).mean()
         # maybe only need to do outputs['val_loss']
-        tensorboard_logs = {'val_loss': avg_loss}
+        tensorboard_logs = {'val_loss': avg_loss, 'val_err': avg_err}
         # these are the full size of the epoch
         pos = torch.cat([x['pos'] for x in outputs], dim=0).to('cpu').detach().numpy()
         act = torch.cat([x['act'] for x in outputs], dim=0).to('cpu').detach().numpy()
@@ -100,7 +109,7 @@ class VanillaRNN(LightningModule):
         # save_ratemaps(self.model, self.trajectory_generator, self.options, step=tot_step)
         compute_ratemaps(pos, act, self.options, epoch=self.current_epoch) # TODO: specify range
         del pos, act
-        return {'val_loss': avg_loss, 'log': tensorboard_logs}
+        return {'val_loss': avg_loss, 'val_err': avg_err, 'log': tensorboard_logs}
 
     def val_dataloader(self):
         # TODO: do a real train/val split
@@ -144,11 +153,15 @@ class LSTM(LightningModule):
         return end, h_n, output
 
     def training_step(self, batch, batch_idx):
-        inputs, place_outputs, _ = batch
-        output, _, _ = self(inputs[0], inputs[1])
+        inputs, place_outputs, pos = batch
+        output, _, act = self(inputs[0], inputs[1])
         loss = self.criterion(output, place_outputs)
-        tensorboard_logs = {'train_loss': loss}
-        return {'loss': loss, 'log': tensorboard_logs}
+
+        pred_pos = self.pc.get_nearest_cell_pos(act)
+        err = torch.mean(torch.sqrt(torch.sum((pos - pred_pos)**2, dim=-1)))
+
+        tensorboard_logs = {'train_loss': loss, 'train_err': err}
+        return {'loss': loss, 'err': err, 'log': tensorboard_logs}
 
     def configure_optimizers(self):
         return optim.Adam(self.parameters(), lr=self.options.learning_rate, weight_decay=self.options.weight_decay)
@@ -161,15 +174,20 @@ class LSTM(LightningModule):
         inputs, place_outputs, pos = batch
         output, _, act = self(inputs[0], inputs[1])
         loss = self.criterion(output, place_outputs)
+
+        pred_pos = self.pc.get_nearest_cell_pos(act)
+        err = torch.mean(torch.sqrt(torch.sum((pos - pred_pos)**2, dim=-1)))
+
         pos = pos.reshape(-1, pos.shape[-1])
         act = act.reshape(-1, act.shape[-1])
-        return {'val_loss': loss, 'pos': pos, 'act': act}
+        return {'val_loss': loss, 'pos': pos, 'act': act, 'val_err': err}
 
     #TODO update the plot generation with bsorch's (seems faster)
     def validation_epoch_end(self, outputs):
         avg_loss = torch.stack([x['val_loss'] for x in outputs]).mean()
+        avg_err = torch.stack([x['val_err'] for x in outputs]).mean()
         # maybe only need to do outputs['val_loss']
-        tensorboard_logs = {'val_loss': avg_loss}
+        tensorboard_logs = {'val_loss': avg_loss, 'val_err': avg_err}
         # these are the full size of the epoch
         pos = torch.cat([x['pos'] for x in outputs], dim=0).to('cpu').detach().numpy()
         act = torch.cat([x['act'] for x in outputs], dim=0).to('cpu').detach().numpy()
@@ -180,7 +198,7 @@ class LSTM(LightningModule):
         # save_ratemaps(self.model, self.trajectory_generator, self.options, step=tot_step)
         compute_ratemaps(pos, act, self.options, epoch=self.current_epoch) # TODO: specify range
         del pos, act
-        return {'val_loss': avg_loss, 'log': tensorboard_logs}
+        return {'val_loss': avg_loss, 'val_err': avg_err, 'log': tensorboard_logs}
 
     def val_dataloader(self):
         # TODO: do a real train/val split
