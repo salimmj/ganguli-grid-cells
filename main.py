@@ -16,18 +16,19 @@ options.sequence_length = 20 # length of rat trajectory
 options.batch_size = 200
 options.activation = 'relu' # activation of the Recurrent Neural Network cell
 options.nG = 512 # size of the hidden layer (grid cells)
-options.nP = 512*2 # size of the output layers (number of place cells to predict)
-options.sigma = 14 # place cell sigma
+options.nP = 4096 # size of the output layers (number of place cells to predict)
+options.sigma = 0.12 # place cell sigma
 options.DoG = True # Difference of Gaussians for the place cell activations
 options.surround_scale = 2 # surround scale between the two gaussians (sigma_2 = sqrt(sigma**2 * surround_scale))
 options.learning_rate = 1e-4
-options.box_width = 220 # width of the box in which the rat walks
-options.box_height = 220 # height of the box in which the rat walks
-options.weight_decay = 0 # weight decay (if 0, we do not use L2 regularization)
-options.train_epoch_size = 10000 # number of mini batches in one epoch of training
+options.box_width = 2.2 # width of the box in which the rat walks
+options.box_height = 2.2 # height of the box in which the rat walks
+options.weight_decay = 1e-4 # weight decay (if 0, we do not use L2 regularization)
+options.train_epoch_size = 1000 # number of mini batches in one epoch of training
 options.val_epoch_size = 50 # number of mini batches to use for validation and generating plots
 options.periodic = False
 options.loss = 'CE' # cross entropy (CE) or MSE
+options.optim = 'Adam'
 
 def generate_run_ID(options):
     '''
@@ -49,6 +50,7 @@ def generate_run_ID(options):
         'bw', str(options.box_width),
         'bh', str(options.box_height),
         'loss', options.loss,
+        'optim', options.optim,
         ]
     separator = '_'
     run_ID = separator.join(params)

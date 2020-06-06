@@ -34,7 +34,7 @@ class DataGenerator(torch.utils.data.IterableDataset):
             pos = stack((target_x, target_y), axis=-1)
 
             del target_x, target_y
-
+            
             place_outputs = self.place_cells.get_activation(pos)
 
             init_x = torch.from_numpy(traj['init_x']).to(self.device)
@@ -88,7 +88,7 @@ class DataGenerator(torch.utils.data.IterableDataset):
         samples = self.options.sequence_length
         dt = 0.02  # time step increment (seconds)
         sigma = 5.76 * 2  # stdev rotation velocity (rads/sec)
-        b = 13.0 * 2 * np.pi # forward velocity rayleigh dist scale (m/sec)
+        b = 0.13 * 2 * np.pi # forward velocity rayleigh dist scale (m/sec)
         mu = 0  # turn angle bias 
         self.border_region = 0.03  # meters
 
@@ -148,5 +148,5 @@ class DataGenerator(torch.utils.data.IterableDataset):
         traj['target_hd'] = head_dir[:,1:-1]
         traj['target_x'] = position[:,2:,0]
         traj['target_y'] = position[:,2:,1]
-    
+
         return traj
