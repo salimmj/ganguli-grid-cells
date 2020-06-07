@@ -39,6 +39,34 @@ class VanillaRNN(BaseRNN):
         return end, h_n, output
 
 
+class IRNN(BaseRNN):
+    '''Implementation of IRNN
+    "A Simple Way to Initialize Recurrent Networks of Rectified Linear Units"
+    by Quoc V. Le, Navdeep Jaitly, Geoffrey E. Hinton
+    arxiv:1504.00941v2 [cs.NE] 7 Apr 2015
+    http://arxiv.org/pdf/1504.00941v2.pdf
+    '''
+    def __init__(self, options):
+        super().__init__(options)
+        self.rnn = nn.RNN(input_size=2,
+            hidden_size=self.options.nG,
+            num_layers=1,
+            nonlinearity=self.options.activation,
+            bias=False,
+            batch_first=True,
+            dropout=0)
+        self.hidden_transform = nn.Linear(in_features=self.options.nP, out_features=self.options.nG, bias=False)
+        self.readout = nn.Linear(in_features=self.options.nG, out_features=self.options.nP, bias=False)
+        nn.init.normal_(self.rnn.weight_ih_l0.data, std=0.0001)
+        nn.init.eye_(self.rnn.weight_hh_l0.data)
+
+    def forward(self, x, init_pos):
+        h_0 = self.hidden_transform(init_pos)
+        h_0 = h_0.view(1, h_0.shape[0], self.options.nG)
+        output, h_n = self.rnn(x, h_0) # should provide h_0 too as it defaults to 0 now
+        end = self.readout(output)
+        return end, h_n, output
+
 # TODO use this instead with https://github.com/huggingface/torchMoji/blob/master/torchmoji/lstm.py
 # changing hardsigmoid/tanh to sigmoid/relu
 class LSTM(BaseRNN):
