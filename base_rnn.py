@@ -4,11 +4,13 @@ import torch.optim as optim
 
 from hessianfree import HessianFree
 
-from visualize import compute_ratemaps
+from visualize import compute_ratemaps, save_seq_err
 
 from pytorch_lightning.core.lightning import LightningModule
 from place_cells import PlaceCells
 from data_generator import DataGenerator
+
+
 
 logsoftmax = nn.LogSoftmax(dim=-1)
 softmax = nn.Softmax(dim=-1)
@@ -39,7 +41,7 @@ class BaseRNN(LightningModule):
         loss += self._l2_loss() * self.options.weight_decay
         # loss += self.weight_decay * tf.reduce_sum(self.RNN.weights[1]**2)
 
-        pred_pos = self.pc.get_nearest_cell_pos(act)
+        pred_pos = self.pc.get_nearest_cell_pos(output)
         err = torch.mean(torch.sqrt(torch.sum((pos - pred_pos)**2, dim=-1)))
 
         tensorboard_logs = {'train_loss': loss, 'train_err': err}
@@ -52,6 +54,8 @@ class BaseRNN(LightningModule):
             return optim.Adam(self.parameters(), lr=self.options.learning_rate)
         elif self.options.optim == 'RMSProp':
             return optim.RMSprop(self.parameters(), lr=self.options.learning_rate)
+        elif self.options.optim == 'LBFGS':
+            return optim.LBFGS(self.parameters(), lr=self.options.learning_rate)
         elif self.options.optim == 'HessianFree':
             return HessianFree(self.parameters(), lr=self.options.learning_rate) #  use_gnm=True, verbose=True
 
@@ -59,30 +63,37 @@ class BaseRNN(LightningModule):
         dg = DataGenerator(self.options, self.pc, gpu=self.on_gpu, train=True)
         return dg
 
+    # TODO: Average of error per step to a csv 
     def validation_step(self, batch, batch_idx):
         inputs, place_outputs, pos = batch
         output, _, act = self(inputs[0], inputs[1])
         loss = self.criterion(output, place_outputs)
 
-        pred_pos = self.pc.get_nearest_cell_pos(act)
-        err = torch.mean(torch.sqrt(torch.sum((pos - pred_pos)**2, dim=-1)))
+        pred_pos = self.pc.get_nearest_cell_pos(output)
+        # err = torch.mean(torch.sqrt(torch.sum((pos - pred_pos)**2, dim=-1)))
+
+
+        err = torch.mean(torch.sqrt((pos - pred_pos)**2), dim=0)
 
         pos = pos.reshape(-1, pos.shape[-1])
         act = act.reshape(-1, act.shape[-1])
         return {'val_loss': loss, 'pos': pos, 'act': act, 'val_err': err, 'output': output}
 
-    #TODO update the plot generation with bsorch's (seems faster)
     def validation_epoch_end(self, outputs):
         avg_loss = torch.stack([x['val_loss'] for x in outputs]).mean()
-        avg_err = torch.stack([x['val_err'] for x in outputs]).mean()
+        avg_err = torch.stack([x['val_err'].mean() for x in outputs]).mean()
+
+        # avg position error per step in sequence
+        avg_seq_err = (torch.stack([x['val_err'] for x in outputs]).mean(dim=0)).mean(dim=-1)
+        save_seq_err(avg_seq_err, self.options)
+
         # maybe only need to do outputs['val_loss']
         tensorboard_logs = {'val_loss': avg_loss, 'val_err': avg_err}
         # these are the full size of the epoch
         pos = torch.cat([x['pos'] for x in outputs], dim=0).to('cpu').detach().numpy()
         act = torch.cat([x['act'] for x in outputs], dim=0).to('cpu').detach().numpy()
         # TODO: fix these vars
-        plots_dir = '.'
-        epoch = 0
+        print(pos.shape, act.shape)
         # Save a picture of rate maps
         # save_ratemaps(self.model, self.trajectory_generator, self.options, step=tot_step)
         compute_ratemaps(pos, act, self.options, epoch=self.current_epoch) # TODO: specify range

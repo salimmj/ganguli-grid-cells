@@ -1,5 +1,5 @@
 from pytorch_lightning import Trainer
-from models import VanillaRNN, LSTM
+from models import VanillaRNN, LSTM, IRNN, FixedIRNN, SirenModel
 from pytorch_lightning.callbacks import ModelCheckpoint
 from pytorch_lightning.logging import TensorBoardLogger
 import glob, os
@@ -15,20 +15,21 @@ options.RNN_type = 'RNN'
 options.sequence_length = 20 # length of rat trajectory
 options.batch_size = 200
 options.activation = 'relu' # activation of the Recurrent Neural Network cell
-options.nG = 512 # size of the hidden layer (grid cells)
-options.nP = 4096 # size of the output layers (number of place cells to predict)
-options.sigma = 0.12 # place cell sigma
+options.nG = 1024 # size of the hidden layer (grid cells)
+options.nP = 1024*2 # size of the output layers (number of place cells to predict)
+options.sigma = 12 # place cell sigma
 options.DoG = True # Difference of Gaussians for the place cell activations
 options.surround_scale = 2 # surround scale between the two gaussians (sigma_2 = sqrt(sigma**2 * surround_scale))
 options.learning_rate = 1e-4
-options.box_width = 2.2 # width of the box in which the rat walks
-options.box_height = 2.2 # height of the box in which the rat walks
-options.weight_decay = 1e-4 # weight decay (if 0, we do not use L2 regularization)
-options.train_epoch_size = 1000 # number of mini batches in one epoch of training
+options.box_width = 220 # width of the box in which the rat walks
+options.box_height = 220 # height of the box in which the rat walks
+options.weight_decay = 0 # weight decay (if 0, we do not use L2 regularization)
+options.train_epoch_size = 2000 # number of mini batches in one epoch of training
 options.val_epoch_size = 50 # number of mini batches to use for validation and generating plots
 options.periodic = False
 options.loss = 'CE' # cross entropy (CE) or MSE
-options.optim = 'Adam'
+options.optim = 'RMSProp' # SGD, Adam, RMSProp, LBFGS
+options.dropout = 0
 
 def generate_run_ID(options):
     '''
@@ -51,6 +52,7 @@ def generate_run_ID(options):
         'bh', str(options.box_height),
         'loss', options.loss,
         'optim', options.optim,
+        'dropout', str(options.dropout),
         ]
     separator = '_'
     run_ID = separator.join(params)
@@ -58,11 +60,13 @@ def generate_run_ID(options):
     return run_ID
 
 run_ID = generate_run_ID(options)
+print('Run:', run_ID)
+
 options.run_ID = run_ID
 
 run_directory = "./experiments/"+run_ID+'/'
 
-models = {'RNN': VanillaRNN, 'LSTM': LSTM}
+models = {'RNN': VanillaRNN, 'LSTM': LSTM, 'IRNN': IRNN, 'FixedIRNN': FixedIRNN, 'SIREN':SirenModel}
 
 model = models[options.RNN_type](options)
 
@@ -81,7 +85,7 @@ checkpoint_callback = ModelCheckpoint(
 # Trainer config
 gpus = 1
 num_nodes=1
-nb_sanity_val_steps=0
+nb_sanity_val_steps=1
 track_grad_norm=2
 log_gpu_memory=True
 

@@ -83,3 +83,9 @@ def compute_ratemaps(pos, act, options, res=20, epoch=0):
     rm_fig = plot_ratemaps(activations, n_plots=len(activations))
     imdir = './experiments/{}/'.format(options.run_ID)
     imsave(imdir + str(epoch) + ".png", rm_fig)
+
+def save_seq_err(avg_seq_err, options):
+    avg_seq_err = list(avg_seq_err.cpu().numpy().astype(str))
+    filepath = './experiments/{}/'.format(options.run_ID)+'avg_seq_err.csv'
+    with open(filepath, "a") as f:
+        f.write(','.join(avg_seq_err)+'\n')
